@@ -78,9 +78,10 @@ def parse_tweet(f, keymap, usr_map):
 
     try:
         mentions = eval(mentions) # Convert to list of str user ids
+
+    # In some files, they're inconsistant about if no mentinos
+    # should be represented as [] or ""
     except:
-        print("Couldn't evaluate the following: ")
-        print(mentions)
         mentions = []
 
     reply = line['in_reply_to_userid']
@@ -246,3 +247,12 @@ def parse_campaign(dir_name):
 if __name__ == '__main__':
     g = parse_campaign('aug2019')
     torch.save(g, '../graphs/aug2019.pt')
+
+    '''
+    Getting user data
+    Getting edge data
+    1898108it [01:53, 16736.08it/s]
+    1708078it [02:19, 12256.98it/s]
+    Adding features for 375046 unknown users
+    Done
+    '''
