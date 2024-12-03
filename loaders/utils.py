@@ -11,7 +11,7 @@ def merge_unknown_users(g):
 
     return g
 
-def split_data(g, snapshot_duration=(60*60*24*30)):
+def split_data(g, snapshot_duration=(60*60*24*7)):
     '''
     Splits into snapshots of 1-month duration by default
     '''

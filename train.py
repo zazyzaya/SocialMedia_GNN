@@ -13,8 +13,8 @@ from models.euler import Euler
 
 HP = SimpleNamespace(
     epochs = 1000,
-    lr = 0.0001,
-    patience = 10,
+    lr = 0.001,
+    patience = 25,
 )
 
 def train(model, data, epochs, patience):
@@ -64,6 +64,7 @@ def train(model, data, epochs, patience):
 
         if val_ap > best[1]:
             best = (e, val_ap)
+            model.save('weights/euler.pt')
 
         if e-best[0] == patience:
             print("Early stopping!")

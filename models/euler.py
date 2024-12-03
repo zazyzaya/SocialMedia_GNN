@@ -7,6 +7,9 @@ class Euler(nn.Module):
     def __init__(self, in_dim, hidden=64, gnn_layers=2, rnn_layers=1, out_dim=32, lr=0.001):
         super().__init__()
 
+        self.args = [in_dim]
+        self.kwargs = dict(hidden=hidden, gnn_layers=gnn_layers, rnn_layers=rnn_layers, out_dim=out_dim, lr=lr)
+
         self.gnn = GraphSAGE(
             in_dim, hidden,
             gnn_layers, dropout=0.2
@@ -37,6 +40,7 @@ class Euler(nn.Module):
         neg = []
 
         for i,ei in enumerate(eis[1:]):
+            ei = ei.unique(dim=1)
             pos.append(
                 (zs[i][ei[0]] * zs[i][ei[1]]).sum(dim=1)
             )
@@ -78,3 +82,9 @@ class Euler(nn.Module):
         self.opt.step()
 
         return loss.item(),h
+
+    def save(self, fname):
+        torch.save(
+            (self.args, self.kwargs, self.state_dict()),
+            fname
+        )
