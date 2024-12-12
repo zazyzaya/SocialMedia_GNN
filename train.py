@@ -1,6 +1,8 @@
+import glob
 import math
 from types import SimpleNamespace
 
+from joblib import Parallel, delayed
 import torch
 from tqdm import tqdm
 from sklearn.metrics import (
@@ -18,6 +20,7 @@ HP = SimpleNamespace(
 )
 
 def train(model, data, epochs, patience):
+    torch.set_num_threads(64)
     best = (-1,float('-inf'))
     log = []
 
@@ -69,21 +72,71 @@ def train(model, data, epochs, patience):
         if e-best[0] == patience:
             print("Early stopping!")
             print("Best scores: ")
-            print(log[-(patience+1)])
+            print(log[best[0]])
             break
 
-    return log
+    return [best[0]] + log[best[0]]
 
+def mean(l): return sum(l) / len(l)
 
-if __name__ == '__main__':
-    g = torch.load('graphs/aug2019.pt')
+def stderr(l):
+    mu = mean(l)
+    s = [math.pow(l_-mu, 2) for l_ in l]
+    std = mean(s)
+    return std / math.sqrt(len(l))
+
+def compute_one(fname):
+    g = torch.load(f'graphs/{fname}.pt')
     model = Euler(g.x.size(1), lr=HP.lr)
 
     g = merge_unknown_users(g)
-    tr,va,te = split_data(g)
+    tr,va,te,avg_size = split_data(g)
+    dur = 7
+    potentials = [30, 90, 180, 365]
+    i = 0
+    while avg_size < 100:
+        if i > len(potentials):
+            print("Too small dataset")
+            return
+
+        if len(va) == 0:
+            print("Too small dataset")
+            return
+
+        dur = potentials[i]
+        tr,va,te,avg_size = split_data(
+            g,
+            snapshot_duration=(60 * 60 * 24 * dur)
+        )
+        i += 1
+
+    # Not enough data
+    if len(va) == 0:
+        return
 
     data = SimpleNamespace(
         x=g.x, train=tr, val=va, test=te
     )
 
-    train(model, data, HP.epochs, HP.patience)
+    results = [
+        train(model, data, HP.epochs, HP.patience)
+        for _ in range(5)
+    ]
+    epoch, vauc, vap, tauc, tap = zip(*results)
+
+    with open(f'results/{fname}.csv', 'w+') as f:
+        f.write(f"Using {dur}-day snapshots\n")
+        f.write('epoch,V-AUC,V-AP,T-AUC,T-AP\n')
+        for i in range(len(vauc)):
+            f.write(f'{epoch[i]},{vauc[i]},{vap[i]},{tauc[i]},{tap[i]}\n')
+
+        f.write('\n')
+        f.write(f'mean,{mean(vauc)},{mean(vap)},{mean(tauc)},{mean(tap)}\n')
+        f.write(f'stderr,{stderr(vauc)},{stderr(vap)},{stderr(tauc)},{stderr(tap)}\n')
+
+if __name__ == '__main__':
+    files = glob.glob('graphs/*.pt')
+    names = [f.split('/')[-1].replace('.pt','') for f in files]
+
+    for name in names:
+        compute_one(name)

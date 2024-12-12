@@ -3,7 +3,15 @@ import torch
 
 def merge_unknown_users(g):
     unk = (g.x == 0).sum(dim=1) == g.x.size(1)
-    unk_id = unk.nonzero().min()
+    unk = unk.nonzero()
+
+    # Done in preprocessing now
+    if unk.size(0) == 0:
+        if g.edge_index.max() != g.size(0)-1:
+            g.x = torch.cat([g.x, torch.zeros(1,g.x.size(1))])
+        return g
+
+    unk_id = unk.min()
 
     # Merge all normal users into single node
     g.x = g.x[:unk_id+1]
@@ -43,4 +51,4 @@ def split_data(g, snapshot_duration=(60*60*24*7)):
     va = eis[tr_idx:te_idx]
     te = eis[te_idx:]
 
-    return tr,va,te
+    return tr,va,te, avg_size

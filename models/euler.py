@@ -28,6 +28,8 @@ class Euler(nn.Module):
         self.bce = nn.BCEWithLogitsLoss()
 
     def embed(self, x, eis, h0=None):
+        eis = [ei.unique(dim=1) for ei in eis]
+
         zs = [self.gnn(x, ei) for ei in eis]
         zs = torch.stack(zs, dim=0) # t x |V| x h
         zs,h = self.rnn(zs, h0)
