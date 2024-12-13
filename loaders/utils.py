@@ -40,6 +40,9 @@ def split_data(g, snapshot_duration=(60*60*24*7)):
 
         min_ts += snapshot_duration
 
+    if eis == []:
+        return [],[],[],0
+
     avg_size = sum([ei.size(1) for ei in eis]) / len(eis)
     print(f"{tot_snapshots} snapshots with sizes {[ei.size(1) for ei in eis]}")
 

@@ -19,8 +19,10 @@ HP = SimpleNamespace(
     patience = 25,
 )
 
-def train(model, data, epochs, patience):
+def train(model, args, kwargs, data, epochs, patience):
     torch.set_num_threads(64)
+    model = model(*args, **kwargs)
+
     best = (-1,float('-inf'))
     log = []
 
@@ -87,7 +89,8 @@ def stderr(l):
 
 def compute_one(fname):
     g = torch.load(f'graphs/{fname}.pt')
-    model = Euler(g.x.size(1), lr=HP.lr)
+    args = (g.x.size(1),)
+    kwargs = dict(lr=HP.lr)
 
     g = merge_unknown_users(g)
     tr,va,te,avg_size = split_data(g)
@@ -119,7 +122,7 @@ def compute_one(fname):
     )
 
     results = [
-        train(model, data, HP.epochs, HP.patience)
+        train(Euler, args, kwargs, data, HP.epochs, HP.patience)
         for _ in range(5)
     ]
     epoch, vauc, vap, tauc, tap = zip(*results)
