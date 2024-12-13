@@ -12,6 +12,8 @@ DATA_DIR = '/mnt/raid1_ssd_4tb/datasets/twitter_misinfo/'
 
 TWT_LEN = 31
 TWEET_TXT = 12
+USR_LOCATION = 3
+USR_BIO = 4
 USR_LEN = 10
 
 MENTION = 0
@@ -33,25 +35,62 @@ def has_line(file):
 def tokenize(f, expected_tokens=None):
     # Trim off leading and tailing quote char (plus newline for tail)
     line = f.readline()
-    line = line[1:]
+
+    # Annoyingly, some files use "," as the delimeter, and others use ,
+    if line.startswith('"'):
+        LEADING_CHAR = True
+        DELIMITER = '","'
+        TRAILING_CHAR = True
+    else:
+        LEADING_CHAR = False
+        DELIMITER = ","
+        TRAILING_CHAR = False
+
+    if LEADING_CHAR:
+        line = line[1:]
 
     # Sometimes tweet text has \n's in it so we can't fully rely on
     # readline to give us a correct full line read
-    tokens = line.split('","')
+    tokens = line.split(DELIMITER)
+
     if expected_tokens:
         while len(tokens) < expected_tokens:
             line += f.readline()
-            tokens = line.split('","')
+            tokens = line.split(DELIMITER)
 
-    # Trim off trailing newline and quote
-    tokens[-1] = tokens[-1][:-2]
+    # So many problems when they don't use quotes around every token
+    if DELIMITER == ',' and expected_tokens:
+        for i in range(expected_tokens):
+            t = tokens[i]
+
+            # Generally, things with commas and newlines in them are quoted
+            while t.startswith('"') and not t.endswith('"'):
+                txt = tokens.pop(i+1)
+                tokens[i] += DELIMITER + txt
+                t = tokens[i]
+
+                # Newlines in the bio can also break the parser
+                if len(tokens) < expected_tokens:
+                    new_line = f.readline()
+                    line += new_line
+                    tokens += new_line.split(DELIMITER)
+
+    # Trim off trailing newline
+    tokens[-1] = tokens[-1][:-1]
+
+    # Trim off trailing quote (if necessary)
+    if TRAILING_CHAR:
+        tokens[-1] = tokens[-1][:-1]
 
     # Somehow, tweet text is still breaking this. Just assume that's the problem
     # and merge all tokens back into tweet text
     if expected_tokens:
         while len(tokens) > expected_tokens:
-            txt = tokens.pop(TWEET_TXT+1)
-            tokens[TWEET_TXT] += '","' + txt
+            if expected_tokens == TWT_LEN:
+                txt = tokens.pop(TWEET_TXT+1)
+                tokens[TWEET_TXT] += DELIMITER + txt
+            else:
+                print("Hm")
 
     return tokens
 
@@ -127,8 +166,8 @@ def parse_user(f, keymap, usr_map, lang_map, cur_year):
 
     # Do some rudimentary feature engineering here
     lang = get_or_add(line['account_language'], lang_map)
-    followers = int(line['follower_count'])
-    following = int(line['following_count'])
+    followers = 0 if line['follower_count'] == '' else float(line['follower_count'])
+    following = 0 if line['following_count'] == '' else float(line['following_count'])
     ratio = followers / (following+1)
     has_url = 1 if line['user_profile_url'] else 0
     created = dt.datetime.strptime(line['account_creation_date'], "%Y-%m-%d").year
@@ -150,9 +189,12 @@ def parse_user(f, keymap, usr_map, lang_map, cur_year):
 def parse_usr_file(fname, cur_year, rows=[], langs=[], usr_map=dict(), lang_map=dict()):
     f = open(fname, 'r')
     columns = build_keymap(f)
+    prog = tqdm()
 
     while has_line(f):
         uuid, x, lang = parse_user(f, columns, usr_map, lang_map, cur_year)
+        prog.update()
+
         if uuid >= len(rows):
             rows.append(x)
             langs.append(lang)
@@ -164,6 +206,7 @@ def parse_usr_file(fname, cur_year, rows=[], langs=[], usr_map=dict(), lang_map=
             rows[uuid] = x
             langs[uuid] = lang
 
+    prog.close()
     return rows, langs, usr_map, lang_map
 
 def parse_tweet_file(fname, usr_map):
@@ -194,10 +237,10 @@ def parse_tweet_file(fname, usr_map):
 
 def parse_campaign(dir_name):
     # Files are named e.g. aug2019/filename.csv
-    year = int(dir_name[-4:])
+    year = int(dir_name.split('/')[-2][-4:])
 
-    usr_files = glob.glob(f'{DATA_DIR}/{dir_name}/*_users_*.csv')
-    twt_files = glob.glob(f'{DATA_DIR}/{dir_name}/*_tweets_*.csv')
+    usr_files = glob.glob(f'{DATA_DIR}/{dir_name}*_users_*.csv')
+    twt_files = glob.glob(f'{DATA_DIR}/{dir_name}*_tweets_*.csv')
 
     print("Getting user data")
 
@@ -245,14 +288,27 @@ def parse_campaign(dir_name):
     return graph
 
 if __name__ == '__main__':
-    g = parse_campaign('aug2019')
-    torch.save(g, '../graphs/aug2019.pt')
+    #g = parse_campaign('aug2019')
+    #torch.save(g, '../graphs/aug2019.pt')
 
-    '''
-    Getting user data
-    Getting edge data
-    1898108it [01:53, 16736.08it/s]
-    1708078it [02:19, 12256.98it/s]
-    Adding features for 375046 unknown users
-    Done
-    '''
+    to_parse = [
+        #'jan2019/bangladesh', # 15 nodes, 4935 edges
+        'jan2019/iran',
+        'jan2019/russia',
+        'jan2019/venezuela',
+        #'june2019/catalonia',
+        #'june2019/iran',
+        #'june2019/russia',
+        #'june2019/venezuela'
+        'aug2019/china'
+        #'oct2018/', # All iran
+        #'sept2019/china',
+        #'sept2019/egypt',
+        #'sept2019/saudi_arabia',
+        #'sept2019/spain',
+        'sept2019/uae'
+    ]
+    for f in to_parse:
+        g = parse_campaign(f)
+        print(f'{f}: {g.x.size(0)} nodes, {g.edge_index.size(1)} edges')
+        torch.save(g, f'../graphs/{f.replace("/", "_")}.pt')

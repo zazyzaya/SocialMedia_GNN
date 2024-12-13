@@ -3,8 +3,6 @@ from torch import nn
 from torch.optim import Adam
 from torch_geometric.nn.models import GraphSAGE
 
-# TODO
-
 class Euler(nn.Module):
     def __init__(self, in_dim, hidden=64, gnn_layers=2, rnn_layers=1, out_dim=32, lr=0.001):
         super().__init__()
