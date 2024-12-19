@@ -293,20 +293,20 @@ if __name__ == '__main__':
 
     to_parse = [
         #'jan2019/bangladesh', # 15 nodes, 4935 edges
-        'jan2019/iran',
-        'jan2019/russia',
-        'jan2019/venezuela',
+        #'jan2019/iran',    # Eval
+        #'jan2019/russia',   # Eval
+        #'jan2019/venezuela',# Eval (crashed)
         #'june2019/catalonia',
         #'june2019/iran',
         #'june2019/russia',
         #'june2019/venezuela'
-        'aug2019/china'
+        'aug2019/china',    # Eval
         #'oct2018/', # All iran
         #'sept2019/china',
         #'sept2019/egypt',
         #'sept2019/saudi_arabia',
         #'sept2019/spain',
-        'sept2019/uae'
+        'sept2019/uae'      # Eval 
     ]
     for f in to_parse:
         g = parse_campaign(f)

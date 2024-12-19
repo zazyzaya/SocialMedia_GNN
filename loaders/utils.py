@@ -55,3 +55,34 @@ def split_data(g, snapshot_duration=(60*60*24*7)):
     te = eis[te_idx:]
 
     return tr,va,te, avg_size
+
+def split_data_csr(g, snapshot_duration=(60*60*24*7)): 
+    '''
+    Splits into snapshots of 1-month duration by default
+    Assumes ei's are sorted by time
+    Returns 
+    '''
+    g.ts = g.ts - g.ts.min()
+    tot_snapshots = math.ceil(g.ts.max() / snapshot_duration)
+
+    eis = [0]
+    min_ts = 0
+    for _ in range(tot_snapshots):
+        mask = (g.ts < min_ts + snapshot_duration).nonzero()
+        en = mask.max()
+        eis.append(en)
+
+        min_ts += snapshot_duration
+
+    if eis == []:
+        return [],[],[],0
+
+    # 85 / 5 /10 split
+    tr_idx = int(len(eis) * 0.85)
+    te_idx = int(len(eis) * 0.90)
+
+    tr = eis[:tr_idx+1]
+    va = eis[tr_idx:te_idx+1]
+    te = eis[te_idx:]
+
+    return tr,va,te

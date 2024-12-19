@@ -16,16 +16,20 @@ def add_labels(g):
 
     return new_x
 
-def add_topo_info(g):
+def topological_features(x, ei):
     '''
-    Assumes g.x contains only labels
+    Assumes x contains only labels
     '''
 
     # Get src,dst, and bidirectional neighborhood info
     mp = MP(aggr=['sum', 'mean'])
-    src = mp.propagate(g.edge_index, x=g.x)
-    dst = mp.propagate(g.edge_index[[1,0]], x=g.x)
-    ei = to_undirected(g.edge_index)
-    bi = mp.propagate(ei, x=g.x)
+    src = mp.propagate(ei, x=x)
+    dst = mp.propagate(ei[[1,0]], x=x)
+    ei_ = to_undirected(ei)
+    bi = mp.propagate(ei_, x=x)
 
-    return torch.cat([src,dst,bi], dim=1)
+    # Sum of neighbors (assumes labels are one-hot)
+    degree = bi[:, list(range(x.size(1))) ].sum(dim=1, keepdim=True)
+    degree_centrality = degree / degree.max()
+
+    return torch.cat([x, src,dst,bi, degree_centrality], dim=1)
