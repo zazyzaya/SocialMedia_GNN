@@ -1,6 +1,15 @@
 import math
 import torch
 
+def sort_edges(g):
+    ts,idx = g.ts.sort()
+
+    g.ts = ts
+    g.edge_index = g.edge_index[:, idx]
+    g.edge_attr = g.edge_attr[idx]
+
+    return g
+
 def merge_unknown_users(g):
     unk = (g.x == 0).sum(dim=1) == g.x.size(1)
     unk = unk.nonzero()
@@ -56,23 +65,30 @@ def split_data(g, snapshot_duration=(60*60*24*7)):
 
     return tr,va,te, avg_size
 
-def split_data_csr(g, snapshot_duration=(60*60*24*7)): 
+def split_data_csr(g, snapshot_duration=(60*60*24*7)):
     '''
     Splits into snapshots of 1-month duration by default
     Assumes ei's are sorted by time
-    Returns 
+    Returns
     '''
     g.ts = g.ts - g.ts.min()
     tot_snapshots = math.ceil(g.ts.max() / snapshot_duration)
 
     eis = [0]
     min_ts = 0
+    sizes = []
     for _ in range(tot_snapshots):
         mask = (g.ts < min_ts + snapshot_duration).nonzero()
         en = mask.max()
-        eis.append(en)
+
+        # Don't add empty spans
+        if en != eis[-1]:
+            eis.append(en)
+            sizes.append(0)
+            continue
 
         min_ts += snapshot_duration
+        sizes.append(eis[-1] - eis[-2])
 
     if eis == []:
         return [],[],[],0
@@ -85,4 +101,4 @@ def split_data_csr(g, snapshot_duration=(60*60*24*7)):
     va = eis[tr_idx:te_idx+1]
     te = eis[te_idx:]
 
-    return tr,va,te
+    return tr,va,te, sum(sizes)/len(sizes)

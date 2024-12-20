@@ -6,7 +6,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import torch.distributed.autograd as dist_autograd
 from torch.distributed.optim import DistributedOptimizer
-from torch.optim.adam import Adam 
+from torch.optim.adam import Adam
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
 
@@ -17,12 +17,12 @@ os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '22032'
 
 
-class MyDDP(DDP): 
-    def call_fn(self, name, *args, **kwargs): 
+class MyDDP(DDP):
+    def call_fn(self, name, *args, **kwargs):
         fn = getattr(self.module, name)
         return fn(*args, **kwargs)
-    
-    def get_module(self): 
+
+    def get_module(self):
         return self.module
 
 class Worker(nn.Module):
@@ -34,13 +34,13 @@ class Worker(nn.Module):
     def forward(self, x):
         print("Worker, forward!")
         return self.net(x)
-    
-    def loss(self, y_hat, y): 
+
+    def loss(self, y_hat, y):
         return self.mse(y_hat,y)
-    
+
     def get_param_rrefs(self):
         rrefs = [rpc.RRef(param) for param in self.parameters()]
-        return rrefs 
+        return rrefs
 
 class Master(nn.Module):
     def __init__(self, rrefs):
@@ -57,15 +57,15 @@ class Master(nn.Module):
         ]
         xs = [x.wait() for x in xs]
         return xs
-    
-    def loss(self, y_hat, y): 
+
+    def loss(self, y_hat, y):
         losses = [
             self.nets[i].rpc_async().call_fn('loss', y_hat[i], y)
             for i in range(self.nworkers)
         ]
         losses = [loss.wait() for loss in losses]
-        return losses 
-    
+        return losses
+
     def parameter_rrefs(self):
         '''
         Distributed optimizer needs RRefs to params rather than the literal
@@ -74,11 +74,11 @@ class Master(nn.Module):
         the recurrent layer
         '''
         params = []
-        for rref in self.nets: 
+        for rref in self.nets:
             params.extend(
                 rref.rpc_sync().call_fn('get_param_rrefs')
             )
-        
+
         #params.extend(_param_rrefs(self.rnn))
         return params
 
@@ -92,12 +92,12 @@ def get_worker(pid, args):
 
 def train(model):
     opt = DistributedOptimizer(
-        Adam, 
+        Adam,
         model.parameter_rrefs(),
         lr=0.01
     )
 
-    for _ in range(10): 
+    for _ in range(10):
         model.train()
         x = [torch.rand(10,10) for _ in range(WORLD_SIZE-1)]
 
@@ -108,7 +108,7 @@ def train(model):
             print(loss)
             dist_autograd.backward(cid, loss)
             opt.step(cid)
-    
+
 
 def init_procs(rank, world_size):
     # Required because gemini uses Infiniband(?)
@@ -131,7 +131,7 @@ def init_procs(rank, world_size):
         # So DDP knows they're all sharing a model
         print(f"Initializing proc group for worker{rank}")
         dist.init_process_group(
-            'gloo', rank=rank, world_size=world_size-1
+            rank=rank, world_size=world_size-1
         )
 
         print(f"Initializing RPC for worker{rank}")

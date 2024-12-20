@@ -6,15 +6,15 @@ def add_labels(g):
     '''
     Initially, normal users have no features, and trolls do
     '''
-    new_x = torch.zeros(g.x.size(0), 2)
+    x = g.x
+    is_troll = (g.x.sum(dim=1) > 0)
+    is_user = ~is_troll
 
-    is_user = (g.x.sum(dim=1) == 0).nonzero()
-    is_troll = (g.x.sum(dim=1) != 0).nonzero()
+    labels = torch.zeros(x.size(0), 2)
+    labels[is_troll, 0] = 1
+    labels[is_user, 1] = 1
 
-    new_x[is_user, 0] = 1
-    new_x[is_troll, 1] = 1
-
-    return new_x
+    return labels
 
 def topological_features(x, ei):
     '''
