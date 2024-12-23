@@ -1,11 +1,8 @@
-import glob
 import math
+import time
 from types import SimpleNamespace
 
-from joblib import Parallel, delayed
 import torch
-from torch import nn
-from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import torch.distributed.autograd as dist_autograd
 from torch.distributed.optim import DistributedOptimizer
@@ -30,9 +27,9 @@ os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '22032'
 
 HP = SimpleNamespace(
-    epochs = 1,
+    epochs = 1_000,
     lr = 0.001,
-    patience = 25,
+    patience = 10,
     hidden = 64,
     gnn_layers = 2
 )
@@ -59,6 +56,7 @@ def init_procs(rank, world_size, data):
             world_size=world_size,
             rpc_backend_options=options
         )
+        rpc._set_rpc_timeout(0)
 
         # Build GNN embedders on workers
         rrefs = [
@@ -77,7 +75,7 @@ def init_procs(rank, world_size, data):
 
         # Flush to tmp file so parent process can get ret vals
         with open('tmp.txt', 'w+') as f:
-            out = ','.join(rets)
+            out = ','.join([str(r) for r in rets])
             f.write(out)
 
     else:  # Init workers
@@ -95,6 +93,7 @@ def init_procs(rank, world_size, data):
             world_size=world_size,
             rpc_backend_options=options
         )
+        rpc._set_rpc_timeout(0)
 
         print("Worker initialized")
 
@@ -111,6 +110,7 @@ def train(model: Euler, data):
     )
 
     for e in range(HP.epochs):
+        st = time.time()
         model.assign_work(data.fname, data.train, 'tr')
 
         with dist_autograd.context() as cid:
@@ -119,9 +119,10 @@ def train(model: Euler, data):
             loss = model.loss(zs)
             dist_autograd.backward(cid, loss)
             opt.step(cid)
+        en = time.time()
 
         loss = (sum(loss) / model.nworkers).item()
-        print(f"[{e}] Loss:\t{loss:0.4f}")
+        print(f"[{e}] Loss:\t{loss:0.4f} ({en-st:0.2f}s)")
 
         with torch.no_grad():
             model.eval()
@@ -153,12 +154,21 @@ def train(model: Euler, data):
             test = torch.cat([test_p, test_n])
             is_tte = torch.cat([ttep, tten])
 
-            test_auc_tte = auc_score(test_labels[is_tte], test[is_tte])
-            test_auc_tue = auc_score(test_labels[~is_tte], test[~is_tte])
-            test_auc = auc_score(test_labels, test)
+            # Got an error about AUC not being defined if only one class present
+            # Doesn't seem to be the case on a rerun, but adding this check to
+            # make sure it doesn't crash
+            if tten.size(0) == 0 or ttep.size(0) == 0:
+                test_auc_tte = -1
+                test_ap_tte = -1
+                test_auc_tue = -1
+                test_ap_tue = -1
+            else:
+                test_auc_tte = auc_score(test_labels[is_tte], test[is_tte])
+                test_auc_tue = auc_score(test_labels[~is_tte], test[~is_tte])
+                test_ap_tte = ap_score(test_labels[is_tte], test[is_tte])
+                test_ap_tue = ap_score(test_labels[~is_tte], test[~is_tte])
 
-            test_ap_tte = ap_score(test_labels[is_tte], test[is_tte])
-            test_ap_tue = ap_score(test_labels[~is_tte], test[~is_tte])
+            test_auc = auc_score(test_labels, test)
             test_ap = ap_score(test_labels, test)
             print(f"\tT-AUC: {test_auc:0.4f}, T-AP: {test_ap:0.4f}")
             print(f"\tTTE-AUC: {test_auc_tte:0.4f}, TTE-AP: {test_ap_tte:0.4f}")
@@ -207,8 +217,8 @@ def compute_one(fname):
     dur = 7
     potentials = [30, 90, 180, 365]
     i = 0
-    while avg_size < 100:
-        if i > len(potentials):
+    while avg_size < 16 or len(va) <= 2:
+        if i == len(potentials):
             print("Too small dataset")
             return
 
@@ -226,6 +236,8 @@ def compute_one(fname):
     # Not enough data
     if len(va) == 0:
         return
+
+    print(len(tr))
 
     data = SimpleNamespace(
         x=g.labels, train=tr, val=va, test=te, fname=f'graphs/{fname}.pt'
@@ -251,11 +263,11 @@ def compute_one(fname):
 
 if __name__ == '__main__':
     files = [
-        'jan2019_iran',
-        'jan2019_russia',
+        #'jan2019_iran', # Done
+        #'jan2019_russia', # Done
         #'jan2019/venezuela', # Crashed when building. Rerun
-        'aug2019_china',
-        'sept2019_uae'
+        'sept2019_uae',
+        # 'aug2019_china', ## OOM
     ]
     names = [f.split('/')[-1].replace('.pt','') for f in files]
 

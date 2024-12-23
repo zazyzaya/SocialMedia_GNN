@@ -1,5 +1,3 @@
-import math
-
 import torch
 from torch import nn
 import torch.distributed.rpc as rpc
@@ -145,7 +143,7 @@ class EulerGNN(nn.Module):
             for i in range(len(eis))
         ]
 
-        #print(f"Worker {self.pid} assigned {len(eis)} graphs")
+        print(f"Worker {self.pid} assigned {len(eis)} graphs")
 
         self.data[mode] = (xs,eis)
         self.xs = xs
@@ -213,9 +211,11 @@ class Euler(nn.Module):
         for i in range(self.nworkers):
             st = max(self.assigned[self.mode][i], 1)
             en = self.assigned[self.mode][i+1]
-            losses.append(
-                self.workers[i].rpc_async().loss(zs[st-1:en-1])
-            )
+
+            if st != en:
+                losses.append(
+                    self.workers[i].rpc_async().loss(zs[st-1:en-1])
+                )
 
         losses = [l.wait() for l in losses]
         return losses
