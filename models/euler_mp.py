@@ -47,7 +47,7 @@ class EulerGNN(nn.Module):
     def forward(self, no_grad=False):
         with torch.set_grad_enabled(not no_grad):
             if len(self.xs) == 0:
-                None
+                return None
 
             embs = [
                 self.gnn(self.xs[i], self.eis[i])
@@ -200,7 +200,8 @@ class Euler(nn.Module):
             self.workers[i].rpc_async().forward(no_grad=no_grad)
             for i in range(self.nworkers)
         ]
-        zs = [x.wait() for x in xs if x is not None]
+        zs = [x.wait() for x in xs]
+        zs = [z for z in zs if z is not None]
 
         zs = torch.cat(zs, dim=0)
         zs, hn = self.rnn(zs, h0)
@@ -208,7 +209,7 @@ class Euler(nn.Module):
 
     def loss(self, zs):
         losses = []
-        for i in range(self.nworkers):
+        for i in range(len(self.assigned[self.mode])-1):
             st = max(self.assigned[self.mode][i], 1)
             en = self.assigned[self.mode][i+1]
 

@@ -119,9 +119,16 @@ def train_batched(model: Euler, data, g_per_worker=1):
 
     for e in range(HP.epochs):
         h = None
-        for n in range(n_batches):
+        for n in range(n_batches-1):
             st = batch_sizes * n
-            en = st + batch_sizes
+
+            # Last batch add remaining jobs to a few workers
+            # If we try to give a subset of workers tasks, and not give
+            # other workers tasks, it causes DDP to hang when backward is called
+            if n == n_batches-2:
+                en = len(data.train)
+            else:
+                en = st + batch_sizes
 
             t0 = time.time()
             model.assign_work(data.fname, data.train[st:en+1], f'tr-{n}')
@@ -132,6 +139,8 @@ def train_batched(model: Euler, data, g_per_worker=1):
                 loss = model.loss(zs)
                 dist_autograd.backward(cid, loss)
                 opt.step(cid)
+                h = h.detach() # Fix double back-prop error
+
             t = time.time()
 
             loss = (sum(loss) / model.nworkers).item()
@@ -152,6 +161,7 @@ def train_batched(model: Euler, data, g_per_worker=1):
             val_ap = ap_score(val_labels, val)
             print(f"\tV-AUC: {val_auc:0.4f}, V-AP: {val_ap:0.4f}", end='')
 
+            # Add a little marker to track when we have beat previous best
             if val_ap > best[1]:
                 print("*")
             else:
