@@ -18,7 +18,7 @@ from loaders.utils import split_data_csr
 from models.euler_mp import Euler, EulerGNN, RRefWrapper
 from models.euler import Euler as Euler_Serial
 
-WORLD_SIZE = 16
+WORLD_SIZE = 16 + 1
 MAX_THREADS = 64
 DIM = 15
 
@@ -42,7 +42,7 @@ def _get_worker(pid, args=(), kwargs=dict()):
         args = (EulerGNN(pid, *args, **kwargs),)
     )
 
-def init_procs(rank, world_size, data):
+def init_procs(rank, world_size, data, batched):
     torch.set_num_threads(MAX_THREADS // world_size)
 
     # Required because gemini uses Infiniband(?)
@@ -71,7 +71,10 @@ def init_procs(rank, world_size, data):
         model = Euler(rrefs)
 
         # Send to training
-        rets = train(model,data)
+        if batched:
+            rets = train_batched(model,data,g_per_worker=batched)
+        else:
+            rets = train(model,data)
 
         # Flush to tmp file so parent process can get ret vals
         with open('tmp.txt', 'w+') as f:
@@ -98,6 +101,105 @@ def init_procs(rank, world_size, data):
         print("Worker initialized")
 
     rpc.shutdown()
+
+def train_batched(model: Euler, data, g_per_worker=1):
+    best = (-1,float('-inf'))
+    log = []
+
+    opt = DistributedOptimizer(
+        Adam,
+        model.parameter_rrefs(),
+        lr=0.01
+    )
+
+    # TODO test max for batch sizes. For now assume we assign one graph
+    # to each worker
+    batch_sizes = model.nworkers * g_per_worker
+    n_batches = math.ceil(len(data.train) / batch_sizes )
+
+    for e in range(HP.epochs):
+        h = None
+        for n in range(n_batches):
+            st = batch_sizes * n
+            en = st + batch_sizes
+
+            t0 = time.time()
+            model.assign_work(data.fname, data.train[st:en+1], f'tr-{n}')
+
+            with dist_autograd.context() as cid:
+                model.train()
+                zs,h = model.forward(h0=h)
+                loss = model.loss(zs)
+                dist_autograd.backward(cid, loss)
+                opt.step(cid)
+            t = time.time()
+
+            loss = (sum(loss) / model.nworkers).item()
+            print(f"[{e}-{n}] Loss:\t{loss:0.4f} ({t-t0:0.2f}s)")
+
+        with torch.no_grad():
+            model.eval()
+
+            # Get vaidation score
+            model.assign_work(data.fname, data.val, 'va')
+            val_z,h = model.forward(h, no_grad=True)
+            val_p, val_n, ttep, tten = model.predict(val_z, no_grad=True)
+            val_labels = torch.zeros(val_p.size(0) + val_n.size(0))
+            val_labels[:val_p.size(0)] = 1
+
+            val = torch.cat([val_p, val_n])
+            val_auc = auc_score(val_labels, val)
+            val_ap = ap_score(val_labels, val)
+            print(f"\tV-AUC: {val_auc:0.4f}, V-AP: {val_ap:0.4f}", end='')
+
+            if val_ap > best[1]:
+                print("*")
+            else:
+                print()
+
+            # Get test score
+            model.assign_work(data.fname, data.test, 'te')
+            test_z,_ = model.forward(h, no_grad=True)
+            test_p, test_n, ttep, tten = model.predict(test_z, no_grad=True)
+            test_labels = torch.zeros(test_p.size(0) + test_n.size(0))
+            test_labels[:test_p.size(0)] = 1
+
+            test = torch.cat([test_p, test_n])
+            is_tte = torch.cat([ttep, tten])
+
+            # Got an error about AUC not being defined if only one class present
+            # Doesn't seem to be the case on a rerun, but adding this check to
+            # make sure it doesn't crash
+            if tten.size(0) == 0 or ttep.size(0) == 0:
+                test_auc_tte = -1
+                test_ap_tte = -1
+                test_auc_tue = -1
+                test_ap_tue = -1
+            else:
+                test_auc_tte = auc_score(test_labels[is_tte], test[is_tte])
+                test_auc_tue = auc_score(test_labels[~is_tte], test[~is_tte])
+                test_ap_tte = ap_score(test_labels[is_tte], test[is_tte])
+                test_ap_tue = ap_score(test_labels[~is_tte], test[~is_tte])
+
+            test_auc = auc_score(test_labels, test)
+            test_ap = ap_score(test_labels, test)
+            print(f"\tT-AUC: {test_auc:0.4f}, T-AP: {test_ap:0.4f}")
+            print(f"\tTTE-AUC: {test_auc_tte:0.4f}, TTE-AP: {test_ap_tte:0.4f}")
+            print(f"\tTUE-AUC: {test_auc_tue:0.4f}, TUE-AP: {test_ap_tue:0.4f}")
+
+        log.append([val_auc, val_ap, test_auc, test_ap, test_auc_tte, test_ap_tte, test_auc_tue, test_ap_tue])
+
+        if val_ap > best[1]:
+            best = (e, val_ap)
+            model.save('weights/euler_mp.pt')
+
+        if e-best[0] == HP.patience:
+            print("Early stopping!")
+            print("Best scores: ")
+            print(log[best[0]])
+            break
+
+    return [best[0]] + log[best[0]]
 
 def train(model: Euler, data):
     best = (-1,float('-inf'))
@@ -196,10 +298,10 @@ def stderr(l):
     std = mean(s)
     return std / math.sqrt(len(l))
 
-def spinup(data, worldsize):
+def spinup(data, worldsize, batched):
     mp.spawn(
         init_procs,
-        args=(worldsize,data),
+        args=(worldsize,data,batched),
         nprocs=worldsize,
         join=True
     )
@@ -210,7 +312,7 @@ def spinup(data, worldsize):
     return int(epoch), float(vauc), float(vap), float(tauc), float(tap), \
         float(t_auc_tte), float(t_ap_tte), float(t_auc_tue), float(t_ap_tue)
 
-def compute_one(fname):
+def compute_one(fname, batched=1):
     g = torch.load(f'graphs/{fname}.pt', weights_only=False)
 
     tr,va,te, avg_size = split_data_csr(g)
@@ -244,7 +346,7 @@ def compute_one(fname):
     )
 
     results = [
-        spinup(data, min(len(tr), WORLD_SIZE))
+        spinup(data, min(len(tr), WORLD_SIZE), batched)
         for _ in range(5)
     ]
     epoch, vauc, vap, tauc, tap, t_auc_tte, t_ap_tte, t_auc_tue, t_ap_tue = zip(*results)
@@ -265,11 +367,11 @@ if __name__ == '__main__':
     files = [
         #'jan2019_iran', # Done
         #'jan2019_russia', # Done
-        #'jan2019/venezuela', # Crashed when building. Rerun
-        'sept2019_uae',
-        # 'aug2019_china', ## OOM
+        'jan2019_venezuela', # OOM
+        # 'sept2019_uae', # Done
+        'aug2019_china', ## OOM
     ]
     names = [f.split('/')[-1].replace('.pt','') for f in files]
 
     for name in names:
-        compute_one(name)
+        compute_one(name, batched=3)
