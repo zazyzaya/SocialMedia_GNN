@@ -159,12 +159,21 @@ class Euler(nn.Module):
         self.assigned = dict()
         self.mode = None
 
-        self.rnn = nn.GRU(
-            hidden, hidden,
-            num_layers=rnn_layers,
-            dropout=0.2 if rnn_layers > 1 else 0,
-            batch_first=False
-        )
+        self.has_rnn = False
+        if rnn_layers > 0:
+            self.rnn = nn.GRU(
+                hidden, hidden,
+                num_layers=rnn_layers,
+                dropout=0.2 if rnn_layers > 1 else 0,
+                batch_first=False
+            )
+            self.has_rnn = True
+
+        else:
+            self.rnn = nn.Sequential(
+                nn.Linear(hidden, hidden),
+                nn.ReLU()
+            )
 
         self.out = nn.Linear(hidden, out_dim)
 
@@ -204,7 +213,13 @@ class Euler(nn.Module):
         zs = [z for z in zs if z is not None]
 
         zs = torch.cat(zs, dim=0)
-        zs, hn = self.rnn(zs, h0)
+
+        if self.has_rnn:
+            zs, hn = self.rnn(zs, h0)
+        else:
+            zs = self.rnn(zs)
+            hn = None
+
         return zs, hn
 
     def loss(self, zs):

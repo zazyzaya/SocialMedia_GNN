@@ -31,7 +31,8 @@ HP = SimpleNamespace(
     lr = 0.001,
     patience = 10,
     hidden = 64,
-    gnn_layers = 2
+    gnn_layers = 2,
+    rnn_layers = 0
 )
 
 def _get_worker(pid, args=(), kwargs=dict()):
@@ -68,7 +69,7 @@ def init_procs(rank, world_size, data, batched):
         ]
 
         # Build model on master
-        model = Euler(rrefs)
+        model = Euler(rrefs, rnn_layers=HP.rnn_layers)
 
         # Send to training
         if batched:
@@ -139,7 +140,9 @@ def train_batched(model: Euler, data, g_per_worker=1):
                 loss = model.loss(zs)
                 dist_autograd.backward(cid, loss)
                 opt.step(cid)
-                h = h.detach() # Fix double back-prop error
+
+                if HP.rnn_layers:
+                    h = h.detach() # Fix double back-prop error
 
             t = time.time()
 
@@ -375,13 +378,13 @@ def compute_one(fname, batched=1):
 
 if __name__ == '__main__':
     files = [
-        #'jan2019_iran', # Done
-        #'jan2019_russia', # Done
-        'jan2019_venezuela', # OOM
-        # 'sept2019_uae', # Done
-        'aug2019_china', ## OOM
+        ('jan2019_iran', 3), # Done
+        ('jan2019_russia', 0), # Done
+        ('jan2019_venezuela', 3), # OOM
+        ('sept2019_uae', 0), # Done
+        ('aug2019_china', 3) ## OOM
     ]
-    names = [f.split('/')[-1].replace('.pt','') for f in files]
+    names = [f[0].split('/')[-1].replace('.pt','') for f in files]
 
-    for name in names:
-        compute_one(name, batched=3)
+    for i,name in enumerate(names):
+        compute_one(name, batched=files[i][1])
