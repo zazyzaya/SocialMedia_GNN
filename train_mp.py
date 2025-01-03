@@ -378,11 +378,11 @@ def compute_one(fname, batched=1):
 
 if __name__ == '__main__':
     files = [
-        ('jan2019_iran', 3), # Done
-        ('jan2019_russia', 0), # Done
-        ('jan2019_venezuela', 3), # OOM
-        ('sept2019_uae', 0), # Done
-        ('aug2019_china', 3) ## OOM
+        #('jan2019_iran', 2), # Done
+        ('jan2019_russia', 2), # Done
+        ('jan2019_venezuela', 2), # OOM
+        ('sept2019_uae', 2), # Done
+        ('aug2019_china', 2) ## OOM
     ]
     names = [f[0].split('/')[-1].replace('.pt','') for f in files]
 
