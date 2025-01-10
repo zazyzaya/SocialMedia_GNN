@@ -17,8 +17,8 @@ from sklearn.metrics import (
 from loaders.utils import split_data_csr
 from models.euler_mp import Euler, EulerGNN, RRefWrapper
 
-WORLD_SIZE = 8 + 1
-MAX_THREADS = 64
+WORLD_SIZE = 4 + 1
+MAX_THREADS =64
 DIM = 15
 
 import os
@@ -385,7 +385,8 @@ if __name__ == '__main__':
         #('jan2019_russia', 2), # Done
         #('jan2019_venezuela', 2), # Done
         ('sept2019_uae', 4),
-        ('aug2019_china', 2)
+        ('aug2019_china', 2),
+        ('reddit_graph', 4)
     ]
     names = [f[0].split('/')[-1].replace('.pt','') for f in files]
 

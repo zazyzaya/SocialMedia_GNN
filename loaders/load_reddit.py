@@ -39,7 +39,7 @@ def load_nodes():
     return x, node_map
 
 def load_edges(node_map):
-    src,dst,ts = [],[]
+    src,dst,ts = [],[],[]
 
     f = open(f'{READ_DIR}/{EDGES}', 'r')
     prog = tqdm(desc='Edges')
@@ -72,7 +72,7 @@ def build_dataset():
     ei,ts = load_edges(node_map)
 
     return Data(
-        x=x,
+        labels=x,
         edge_index=ei,
         ts=ts
     )
