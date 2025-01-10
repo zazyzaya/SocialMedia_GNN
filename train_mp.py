@@ -16,9 +16,8 @@ from sklearn.metrics import (
 
 from loaders.utils import split_data_csr
 from models.euler_mp import Euler, EulerGNN, RRefWrapper
-from models.euler import Euler as Euler_Serial
 
-WORLD_SIZE = 16 + 1
+WORLD_SIZE = 8 + 1
 MAX_THREADS = 64
 DIM = 15
 
@@ -32,7 +31,7 @@ HP = SimpleNamespace(
     patience = 10,
     hidden = 64,
     gnn_layers = 2,
-    rnn_layers = 0
+    rnn_layers = 1
 )
 
 def _get_worker(pid, args=(), kwargs=dict()):
@@ -141,13 +140,14 @@ def train_batched(model: Euler, data, g_per_worker=1):
                 dist_autograd.backward(cid, loss)
                 opt.step(cid)
 
+                loss_val = (sum(loss) / model.nworkers).item()
+                del loss, zs
+
                 if HP.rnn_layers:
                     h = h.detach() # Fix double back-prop error
 
             t = time.time()
-
-            loss = (sum(loss) / model.nworkers).item()
-            print(f"[{e}-{n}] Loss:\t{loss:0.4f} ({t-t0:0.2f}s)")
+            print(f"[{e}-{n}] Loss:\t{loss_val:0.4f} ({t-t0:0.2f}s)")
 
         with torch.no_grad():
             model.eval()
@@ -234,10 +234,12 @@ def train(model: Euler, data):
             loss = model.loss(zs)
             dist_autograd.backward(cid, loss)
             opt.step(cid)
-        en = time.time()
 
-        loss = (sum(loss) / model.nworkers).item()
-        print(f"[{e}] Loss:\t{loss:0.4f} ({en-st:0.2f}s)")
+            loss_val = (sum(loss) / model.nworkers).item()
+            del loss, zs
+
+        en = time.time()
+        print(f"[{e}] Loss:\t{loss_val:0.4f} ({en-st:0.2f}s)")
 
         with torch.no_grad():
             model.eval()
@@ -353,6 +355,7 @@ def compute_one(fname, batched=1):
         return
 
     print(len(tr))
+    print(dur)
 
     data = SimpleNamespace(
         x=g.labels, train=tr, val=va, test=te, fname=f'graphs/{fname}.pt'
@@ -379,10 +382,10 @@ def compute_one(fname, batched=1):
 if __name__ == '__main__':
     files = [
         #('jan2019_iran', 2), # Done
-        ('jan2019_russia', 2), # Done
-        ('jan2019_venezuela', 2), # OOM
-        ('sept2019_uae', 2), # Done
-        ('aug2019_china', 2) ## OOM
+        #('jan2019_russia', 2), # Done
+        #('jan2019_venezuela', 2), # Done
+        ('sept2019_uae', 4),
+        ('aug2019_china', 2)
     ]
     names = [f[0].split('/')[-1].replace('.pt','') for f in files]
 

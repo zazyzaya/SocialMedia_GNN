@@ -129,23 +129,25 @@ class EulerGNN(nn.Module):
         edge index, load the segment of the graph this worker is
         responsible for
         '''
+        del self.xs, self.eis
+
         # If data has been loaded before, keep it cached so we can switch quickly
         if mode in self.data:
             return self.switch_mode(mode)
 
         g = torch.load(fname, weights_only=False)
         eis = [
-            g.edge_index[:, idx_ptr[i]:idx_ptr[i+1]]
+            g.edge_index[:, idx_ptr[i]:idx_ptr[i+1]].detach()
             for i in range(len(idx_ptr)-1)
         ]
         xs = [
-            topological_features(g.labels, eis[i])
+            topological_features(g.labels, eis[i]).detach()
             for i in range(len(eis))
         ]
 
-        print(f"Worker {self.pid} assigned {len(eis)} graphs")
+        #print(f"Worker {self.pid} assigned {len(eis)} graphs")
 
-        self.data[mode] = (xs,eis)
+        #self.data[mode] = (xs,eis)
         self.xs = xs
         self.eis = eis
 
@@ -243,6 +245,8 @@ class Euler(nn.Module):
         each worker recieves
         '''
         self.mode = tag
+
+        '''
         if tag in self.assigned:
             futs = [
                 self.workers[i].rpc_async().switch_mode(tag)
@@ -250,6 +254,7 @@ class Euler(nn.Module):
             ]
             [f.wait() for f in futs]
             return
+        '''
 
         # TODO fix load imbalance
         jobs = len(snapshot_idxs)-1

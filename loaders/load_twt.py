@@ -150,7 +150,7 @@ def parse_tweet(f, keymap, usr_map):
         etype.append(RETWEET)
         ts.append(t)
 
-    return src,dst,etype,ts
+    return src,dst,etype,ts, [line['tweet_text']] * len(src)
 
 def get_or_add(key, db):
     if (uuid := db.get(key)) is None:
@@ -219,10 +219,10 @@ def parse_tweet_file(fname, usr_map):
     columns = build_keymap(f)
 
     prog = tqdm()
-    src,dst,etype,ts = [],[],[],[]
+    src,dst,etype,ts,txt = [],[],[],[],[]
     while has_line(f):
-        s,d,e,t = parse_tweet(f, columns, usr_map)
-        src += s; dst += d; etype += e; ts += t
+        s,d,e,t,txt_ = parse_tweet(f, columns, usr_map)
+        src += s; dst += d; etype += e; ts += t; txt += txt_
         prog.update()
 
     prog.close()
@@ -230,7 +230,8 @@ def parse_tweet_file(fname, usr_map):
     data = Data(
         edge_index = torch.tensor([src,dst]),
         edge_attr  = torch.tensor(etype),
-        ts = torch.tensor(ts)
+        ts = torch.tensor(ts),
+        text = txt
     )
 
     return data
@@ -271,7 +272,8 @@ def parse_campaign(dir_name):
     graph = Data(
         edge_index = torch.cat([g.edge_index for g in graphs], dim=1),
         edge_attr = torch.cat([g.edge_attr for g in graphs]),
-        ts = torch.cat([g.ts for g in graphs])
+        ts = torch.cat([g.ts for g in graphs]),
+        text = sum([g.text for g in graphs], [])
     )
 
     # Check if new nodes were added that weren't present in
@@ -294,8 +296,8 @@ if __name__ == '__main__':
     to_parse = [
         #'jan2019/bangladesh', # 15 nodes, 4935 edges
         #'jan2019/iran',    # Eval
-        #'jan2019/russia',   # Eval
-        'jan2019/venezuela',# Eval (crashed)
+        'jan2019/russia',   # Eval
+        #'jan2019/venezuela',# Eval
         #'june2019/catalonia',
         #'june2019/iran',
         #'june2019/russia',
@@ -306,9 +308,9 @@ if __name__ == '__main__':
         #'sept2019/egypt',
         #'sept2019/saudi_arabia',
         #'sept2019/spain',
-        #'sept2019/uae'      # Eval
+        'sept2019/uae'      # Eval
     ]
     for f in to_parse:
         g = parse_campaign(f)
         print(f'{f}: {g.x.size(0)} nodes, {g.edge_index.size(1)} edges')
-        torch.save(g, f'../graphs/{f.replace("/", "_")}.pt')
+        torch.save(g, f'../graphs/{f.replace("/", "_")}-txt.pt')

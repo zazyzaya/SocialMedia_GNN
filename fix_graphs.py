@@ -2,7 +2,7 @@ import glob
 import torch
 from loaders.utils import sort_edges
 
-graphs = glob.glob('graphs/*.pt')
+graphs = ['graphs/jan2019_russia-txt.pt'] #glob.glob('graphs/*.pt')
 for gfile in graphs:
     g = torch.load(gfile, weights_only=False)
     g = sort_edges(g)

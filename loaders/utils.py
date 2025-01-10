@@ -8,6 +8,9 @@ def sort_edges(g):
     g.edge_index = g.edge_index[:, idx]
     g.edge_attr = g.edge_attr[idx]
 
+    if 'text' in g.keys():
+        g.text = [g.text[i] for i in idx]
+
     return g
 
 def merge_unknown_users(g):
@@ -77,18 +80,15 @@ def split_data_csr(g, snapshot_duration=(60*60*24*7)):
     eis = [0]
     min_ts = 0
     sizes = []
-    for _ in range(tot_snapshots):
-        mask = (g.ts < min_ts + snapshot_duration).nonzero()
+    for i in range(tot_snapshots):
+        mask = (g.ts < (min_ts + snapshot_duration)).nonzero()
         en = mask.max()
+        min_ts += snapshot_duration
 
         # Don't add empty spans
         if en != eis[-1]:
             eis.append(en)
-            sizes.append(0)
-            continue
-
-        min_ts += snapshot_duration
-        sizes.append(eis[-1] - eis[-2])
+            sizes.append(eis[-1] - eis[-2])
 
     if eis == []:
         return [],[],[],0
