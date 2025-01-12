@@ -31,7 +31,7 @@ HP = SimpleNamespace(
     patience = 10,
     hidden = 64,
     gnn_layers = 2,
-    rnn_layers = 1
+    rnn_layers = 0
 )
 
 def _get_worker(pid, args=(), kwargs=dict()):
@@ -381,12 +381,12 @@ def compute_one(fname, batched=1):
 
 if __name__ == '__main__':
     files = [
-        #('jan2019_iran', 2), # Done
-        #('jan2019_russia', 2), # Done
-        #('jan2019_venezuela', 2), # Done
+        ('jan2019_iran', 2), # Done
+        ('jan2019_russia', 2), # Done
+        ('jan2019_venezuela', 2), # Done
         ('sept2019_uae', 4),
         ('aug2019_china', 2),
-        ('reddit_graph', 4)
+        ('reddit_graph', 2)
     ]
     names = [f[0].split('/')[-1].replace('.pt','') for f in files]
 
