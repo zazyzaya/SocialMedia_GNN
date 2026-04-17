@@ -162,6 +162,13 @@ def get_or_add(key, db):
 def parse_user(f, keymap, usr_map, lang_map, cur_year):
     line = jsonify(f, keymap, USR_LEN)
     id = line['userid']
+
+    # For testing
+    if id not in usr_map:
+        with open('../usr.csv', 'a') as f:
+            idx = get_or_add(id, usr_map)
+            f.write(f'{idx},{id},{line["user_display_name"]},{line["user_screen_name"]}\n')
+
     id = get_or_add(id, usr_map)
 
     # Do some rudimentary feature engineering here
@@ -263,11 +270,18 @@ def parse_campaign(dir_name):
         one_hot
     ], dim=1)
 
+    n_trolls = len(usr_map)
+
     print("Getting edge data")
     graphs = []
     for f in twt_files:
         g = parse_tweet_file(f, usr_map)
         graphs.append(g)
+
+    with open('../usrs.csv', 'a') as f:
+        for usr,idx in usr_map.items():
+            if idx >= n_trolls:
+                f.write(f'{idx},{usr}\n')
 
     graph = Data(
         edge_index = torch.cat([g.edge_index for g in graphs], dim=1),
@@ -308,7 +322,7 @@ if __name__ == '__main__':
         #'sept2019/egypt',
         #'sept2019/saudi_arabia',
         #'sept2019/spain',
-        'sept2019/uae'      # Eval
+        #'sept2019/uae'      # Eval
     ]
     for f in to_parse:
         g = parse_campaign(f)

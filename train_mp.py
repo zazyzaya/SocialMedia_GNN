@@ -15,11 +15,12 @@ from sklearn.metrics import (
 )
 
 from loaders.utils import split_data_csr
-from models.euler_mp import Euler, EulerGNN, RRefWrapper
+from models.euler_mp import Euler, EulerGNN, EulerDNN, RRefWrapper
 
 WORLD_SIZE = 4 + 1
 MAX_THREADS =64
 DIM = 15
+USE_DNN = True
 
 import os
 os.environ['MASTER_ADDR'] = 'localhost'
@@ -36,10 +37,14 @@ HP = SimpleNamespace(
 
 def _get_worker(pid, args=(), kwargs=dict()):
     print(f"Getting worker {pid}")
+
+    submodel =  EulerGNN(pid, *args, **kwargs) if not USE_DNN \
+                else EulerDNN(pid, *args, **kwargs)
+
     return rpc.remote(
         f'worker{pid}',
         RRefWrapper,
-        args = (EulerGNN(pid, *args, **kwargs),)
+        args = (submodel,)
     )
 
 def init_procs(rank, world_size, data, batched):

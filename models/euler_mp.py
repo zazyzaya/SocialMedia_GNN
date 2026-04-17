@@ -34,10 +34,12 @@ class EulerGNN(nn.Module):
         self.data = dict()
         self.pid = i
 
-        self.gnn = GraphSAGE(
-            in_dim, hidden,
-            gnn_layers, dropout=0.2
-        )
+        if gnn_layers:
+            self.gnn = GraphSAGE(
+                in_dim, hidden,
+                gnn_layers, dropout=0.2
+            )
+
         self.hidden = hidden
 
         self.xs = []
@@ -151,6 +153,44 @@ class EulerGNN(nn.Module):
         self.xs = xs
         self.eis = eis
 
+class EulerDNN(EulerGNN):
+    '''
+    Does the same as above, but using a traditional DNN
+    '''
+    def __init__(self, i, in_dim, hidden=64, gnn_layers=2):
+        super().__init__(i, in_dim, gnn_layers=0)
+
+        self.data = dict()
+        self.pid = i
+
+        self.dnn = nn.Sequential(
+            nn.Sequential(
+                nn.Linear(in_dim, hidden),
+                nn.ReLU()
+            ),
+            *[
+                nn.Sequential(
+                    nn.Linear(hidden, hidden),
+                    nn.ReLU()
+                ) for _ in range(gnn_layers-1)
+            ]
+        )
+        self.hidden = hidden
+
+        self.xs = []
+        self.eis = []
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def forward(self, no_grad=False):
+        with torch.set_grad_enabled(not no_grad):
+            if len(self.xs) == 0:
+                return None
+
+            embs = [
+                self.dnn(self.xs[i])
+                for i in range(len(self.xs))
+            ]
+            return torch.stack(embs)
 
 class Euler(nn.Module):
     def __init__(self, rrefs, hidden=64, rnn_layers=1, out_dim=32):
